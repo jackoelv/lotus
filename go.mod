@@ -11,7 +11,8 @@ require (
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/coreos/go-systemd/v22 v22.0.0
 	github.com/docker/go-units v0.4.0
-	github.com/drand/drand v0.9.2-0.20200529123141-6b138aefaef2
+	github.com/drand/drand v0.9.2-0.20200610170348-4bd08ee01ab1
+	github.com/drand/drand/cmd/relay-gossip v0.0.0-20200526025814-ddf9da8a93e6
 	github.com/drand/kyber v1.0.2
 	github.com/fatih/color v1.8.0
 	github.com/filecoin-project/chain-validation v0.0.6-0.20200605221044-7f78284bbc94
@@ -118,7 +119,7 @@ require (
 	go.uber.org/multierr v1.5.0
 	go.uber.org/zap v1.15.0
 	go4.org v0.0.0-20190313082347-94abd6928b1d // indirect
-	golang.org/x/sys v0.0.0-20200519105757-fe76b779f299
+	golang.org/x/sys v0.0.0-20200602225109-6fdc65e7d980
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 // indirect
