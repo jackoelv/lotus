@@ -1380,3 +1380,13 @@ func (syncer *Syncer) getLatestBeaconEntry(ctx context.Context, ts *types.TipSet
 
 	return nil, xerrors.Errorf("found NO beacon entries in the 20 blocks prior to given tipset")
 }
+
+func (syncer *Syncer) MaxHeightAtCurrentTime() (abi.ChainEpoch, error) {
+	g, err := syncer.store.GetGenesis()
+	if err != nil {
+		return -1, xerrors.Errorf("failed to load genesis block: %w", err)
+	}
+
+	now := uint64(time.Now().Unix())
+	return abi.ChainEpoch((now - g.Timestamp) / build.BlockDelay), nil
+}

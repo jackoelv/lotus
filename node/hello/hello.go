@@ -79,6 +79,17 @@ func (hs *Service) HandleStream(s inet.Stream) {
 		s.Conn().Close()
 		return
 	}
+
+	maxHeight, err := hs.syncer.MaxHeightAtCurrentTime()
+	if err != nil {
+		log.Warnf("failed to calculate max possible height: %w", err)
+		s.Conn().Close()
+		return
+	} else if hmsg.HeaviestTipSetHeight > maxHeight+5 {
+		log.Warnf("other peer is an impossibly large height! (%d > %d)", hmsg.HeaviestTipSetHeight, maxHeight+5)
+		s.Conn().Close()
+		return
+	}
 	go func() {
 		defer s.Close()
 
