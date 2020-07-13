@@ -57,5 +57,6 @@ func NewWorkerRPC(addr string, requestHeader http.Header) (api.WorkerAPI, jsonrp
 		requestHeader,
 	)
 
+
 	return &res, closer, err
 }

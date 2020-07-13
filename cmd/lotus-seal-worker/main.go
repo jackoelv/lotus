@@ -169,7 +169,7 @@ var runCmd = &cli.Command{
 		var taskTypes []sealtasks.TaskType
 
 		taskTypes = append(taskTypes, sealtasks.TTFetch, sealtasks.TTCommit1, sealtasks.TTFinalize)
-
+		taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 		if cctx.Bool("precommit1") {
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit1)
 		}
@@ -270,7 +270,6 @@ var runCmd = &cli.Command{
 		}
 
 		remote := stores.NewRemote(localStore, nodeApi, sminfo.AuthHeader())
-
 		// Create / expose the worker
 
 		workerApi := &worker{

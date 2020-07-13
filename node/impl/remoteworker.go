@@ -8,12 +8,12 @@ import (
 
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/go-jsonrpc/auth"
+	sectorstorage "github.com/filecoin-project/sector-storage"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	storage2 "github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/client"
-	"github.com/filecoin-project/sector-storage"
 )
 
 type remoteWorker struct {
@@ -22,11 +22,31 @@ type remoteWorker struct {
 }
 
 func (r *remoteWorker) NewSector(ctx context.Context, sector abi.SectorID) error {
+	log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go NewSector")
 	return xerrors.New("unsupported")
 }
 
 func (r *remoteWorker) AddPiece(ctx context.Context, sector abi.SectorID, pieceSizes []abi.UnpaddedPieceSize, newPieceSize abi.UnpaddedPieceSize, pieceData storage2.Data) (abi.PieceInfo, error) {
-	return abi.PieceInfo{}, xerrors.New("unsupported")
+	log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go AddPiece")
+	nodeApi := r.WorkerAPI
+	abipiece, err := nodeApi.RemoteAddPiece(ctx, sector, pieceSizes, newPieceSize)
+	if err != nil {
+		log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go nodeApi.RemoteAddPiece:%s", err)
+		return abipiece, err
+	}
+
+	return abipiece, nil
+}
+func (r *remoteWorker) RemoteAddPiece(ctx context.Context, sector abi.SectorID, pieceSizes []abi.UnpaddedPieceSize, newPieceSize abi.UnpaddedPieceSize) (abi.PieceInfo, error) {
+	log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go RemoteAddPiece")
+	nodeApi := r.WorkerAPI
+	abipiece, err := nodeApi.RemoteAddPiece(ctx, sector, pieceSizes, newPieceSize)
+	if err != nil {
+		log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go RemoteAddPiece nodeApi.RemoteAddPiece:%s", err)
+		return abipiece, err
+	}
+
+	return abipiece, nil
 }
 
 func connectRemoteWorker(ctx context.Context, fa api.Common, url string) (*remoteWorker, error) {
@@ -42,7 +62,7 @@ func connectRemoteWorker(ctx context.Context, fa api.Common, url string) (*remot
 	if err != nil {
 		return nil, xerrors.Errorf("creating jsonrpc client: %w", err)
 	}
-
+	// log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go wapi:%s", wapi)
 	return &remoteWorker{wapi, closer}, nil
 }
 
