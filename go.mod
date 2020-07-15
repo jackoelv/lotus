@@ -147,6 +147,6 @@ replace github.com/filecoin-project/sector-storage => ../sector-storage
 
 replace github.com/filecoin-project/storage-fsm => ../storage-fsm
 
-replace github.com/filecoin-project/go-jsonrpc => ../go-jsonrpc
+//replace github.com/filecoin-project/go-jsonrpc => ../go-jsonrpc
 
 replace github.com/filecoin-project/filecoin-ffi => ./extern/filecoin-ffi
