@@ -36,3 +36,7 @@ bin/ipget
 bin/tmp/*
 .idea
 scratchpad
+daemon.log
+dev.gen
+localnet.json
+miner.log
