@@ -247,6 +247,7 @@ type WorkerStruct struct {
 
 		AddPiece       func(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, pieceData storage.Data) (abi.PieceInfo, error) `perm:"admin"`
 		RemoteAddPiece func(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize) (abi.PieceInfo, error)                         `perm:"admin"`
+		Parallel       func(ctx context.Context) (int, error)                                                                                                                `perm:"admin"`
 
 		Version func(context.Context) (build.Version, error) `perm:"admin"`
 
@@ -932,6 +933,10 @@ func (c *StorageMinerStruct) StorageAddLocal(ctx context.Context, path string) e
 }
 
 // WorkerStruct
+
+func (w *WorkerStruct) Parallel(ctx context.Context) (int, error) {
+	return w.Internal.Parallel(ctx)
+}
 func (w *WorkerStruct) AddPiece(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, pieceData storage.Data) (abi.PieceInfo, error) {
 	return w.Internal.AddPiece(ctx, sector, epcs, sz, pieceData)
 }

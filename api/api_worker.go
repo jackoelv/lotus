@@ -20,6 +20,7 @@ type WorkerAPI interface {
 	// TODO: Info() (name, ...) ?
 	AddPiece(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, pieceData storage.Data) (abi.PieceInfo, error)
 	RemoteAddPiece(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize) (abi.PieceInfo, error)
+	Parallel(context.Context) (int, error)
 
 	TaskTypes(context.Context) (map[sealtasks.TaskType]struct{}, error) // TaskType -> Weight
 	Paths(context.Context) ([]stores.StoragePath, error)

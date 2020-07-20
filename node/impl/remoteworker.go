@@ -25,6 +25,12 @@ func (r *remoteWorker) NewSector(ctx context.Context, sector abi.SectorID) error
 	return xerrors.New("unsupported")
 }
 
+func (r *remoteWorker) Parallel(ctx context.Context) (int, error) {
+	nodeApi := r.WorkerAPI
+	parallel, _ := nodeApi.Parallel(ctx)
+	return parallel, nil
+}
+
 func (r *remoteWorker) AddPiece(ctx context.Context, sector abi.SectorID, pieceSizes []abi.UnpaddedPieceSize, newPieceSize abi.UnpaddedPieceSize, pieceData storage2.Data) (abi.PieceInfo, error) {
 	log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go AddPiece")
 	nodeApi := r.WorkerAPI

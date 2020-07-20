@@ -107,6 +107,21 @@ var runCmd = &cli.Command{
 			Usage: "enable commit (32G sectors: all cores or GPUs, 128GiB Memory + 64GiB swap)",
 			Value: true,
 		},
+		&cli.IntFlag{
+			Name:  "parallel",
+			Usage: "enable multi precommit1(1...10)",
+			Value: 3,
+		},
+		&cli.IntFlag{
+			Name:  "t1",
+			Usage: "enable multi precommit1(1...10)",
+			Value: 400,
+		},
+		&cli.IntFlag{
+			Name:  "t2",
+			Usage: "enable multi precommit1(1...10)",
+			Value: 120,
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		if !cctx.Bool("enable-gpu-proving") {
@@ -272,10 +287,14 @@ var runCmd = &cli.Command{
 		remote := stores.NewRemote(localStore, nodeApi, sminfo.AuthHeader())
 		// Create / expose the worker
 
+		//parallel precommit1
+		parallel := cctx.Int("parallel")
+
 		workerApi := &worker{
 			LocalWorker: sectorstorage.NewLocalWorker(sectorstorage.WorkerConfig{
-				SealProof: spt,
-				TaskTypes: taskTypes,
+				SealProof:   spt,
+				TaskTypes:   taskTypes,
+				ParallelNum: parallel,
 			}, remote, localStore, nodeApi),
 		}
 
