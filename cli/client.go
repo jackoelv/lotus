@@ -11,14 +11,15 @@ import (
 	"github.com/ipfs/go-cidutil/cidenc"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/multiformats/go-multibase"
+	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
-	"gopkg.in/urfave/cli.v2"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/builtin/market"
 
+	"github.com/filecoin-project/lotus/api"
 	lapi "github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
 )
@@ -83,6 +84,11 @@ var clientImportCmd = &cli.Command{
 		}
 		defer closer()
 		ctx := ReqContext(cctx)
+
+		if cctx.NArg() != 1 {
+			return xerrors.New("expected input path as the only arg")
+		}
+
 		absPath, err := filepath.Abs(cctx.Args().First())
 		if err != nil {
 			return err
@@ -384,12 +390,16 @@ var clientRetrieveCmd = &cli.Command{
 	ArgsUsage: "[dataCid outputPath]",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name:  "address",
-			Usage: "address to use for transactions",
+			Name:  "from",
+			Usage: "address to send transactions from",
 		},
 		&cli.BoolFlag{
 			Name:  "car",
 			Usage: "export to a car file instead of a regular file",
+		},
+		&cli.StringFlag{
+			Name:  "miner",
+			Usage: "miner address for retrieval, if not present it'll use local discovery",
 		},
 	},
 	Action: func(cctx *cli.Context) error {
@@ -398,7 +408,7 @@ var clientRetrieveCmd = &cli.Command{
 			return nil
 		}
 
-		api, closer, err := GetFullNodeAPI(cctx)
+		fapi, closer, err := GetFullNodeAPI(cctx)
 		if err != nil {
 			return err
 		}
@@ -406,10 +416,10 @@ var clientRetrieveCmd = &cli.Command{
 		ctx := ReqContext(cctx)
 
 		var payer address.Address
-		if cctx.String("address") != "" {
-			payer, err = address.NewFromString(cctx.String("address"))
+		if cctx.String("from") != "" {
+			payer, err = address.NewFromString(cctx.String("from"))
 		} else {
-			payer, err = api.WalletDefaultAddress(ctx)
+			payer, err = fapi.WalletDefaultAddress(ctx)
 		}
 		if err != nil {
 			return err
@@ -432,23 +442,39 @@ var clientRetrieveCmd = &cli.Command{
 			return nil
 		}*/ // TODO: fix
 
-		offers, err := api.ClientFindData(ctx, file)
-		if err != nil {
-			return err
+		var offer api.QueryOffer
+		minerStrAddr := cctx.String("miner")
+		if minerStrAddr == "" { // Local discovery
+			offers, err := fapi.ClientFindData(ctx, file)
+			if err != nil {
+				return err
+			}
+
+			// TODO: parse offer strings from `client find`, make this smarter
+			if len(offers) < 1 {
+				fmt.Println("Failed to find file")
+				return nil
+			}
+			offer = offers[0]
+		} else { // Directed retrieval
+			minerAddr, err := address.NewFromString(minerStrAddr)
+			if err != nil {
+				return err
+			}
+			offer, err = fapi.ClientMinerQueryOffer(ctx, file, minerAddr)
+			if err != nil {
+				return err
+			}
 		}
-
-		// TODO: parse offer strings from `client find`, make this smarter
-
-		if len(offers) < 1 {
-			fmt.Println("Failed to find file")
-			return nil
+		if offer.Err != "" {
+			return fmt.Errorf("The received offer errored: %s", offer.Err)
 		}
 
 		ref := &lapi.FileRef{
 			Path:  cctx.Args().Get(1),
 			IsCAR: cctx.Bool("car"),
 		}
-		if err := api.ClientRetrieve(ctx, offers[0].Order(payer), ref); err != nil {
+		if err := fapi.ClientRetrieve(ctx, offer.Order(payer), ref); err != nil {
 			return xerrors.Errorf("Retrieval Failed: %w", err)
 		}
 
@@ -477,7 +503,7 @@ var clientQueryAskCmd = &cli.Command{
 	},
 	Action: func(cctx *cli.Context) error {
 		if cctx.NArg() != 1 {
-			fmt.Println("Usage: query-ask [address]")
+			fmt.Println("Usage: query-ask [minerAddress]")
 			return nil
 		}
 
@@ -506,11 +532,11 @@ var clientQueryAskCmd = &cli.Command{
 				return xerrors.Errorf("failed to get peerID for miner: %w", err)
 			}
 
-			if mi.PeerId == peer.ID("SETME") {
+			if peer.ID(mi.PeerId) == peer.ID("SETME") {
 				return fmt.Errorf("the miner hasn't initialized yet")
 			}
 
-			pid = mi.PeerId
+			pid = peer.ID(mi.PeerId)
 		}
 
 		ask, err := api.ClientQueryAsk(ctx, pid, maddr)

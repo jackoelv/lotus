@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"path/filepath"
 
 	"github.com/gbrlsnchs/jwt/v3"
 	logging "github.com/ipfs/go-log/v2"
@@ -18,6 +19,7 @@ import (
 	"github.com/filecoin-project/lotus/api/apistruct"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lotus/journal"
 	"github.com/filecoin-project/lotus/lib/addrutil"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/repo"
@@ -34,7 +36,7 @@ func RecordValidator(ps peerstore.Peerstore) record.Validator {
 	}
 }
 
-const JWTSecretName = "auth-jwt-private"
+const JWTSecretName = "auth-jwt-private" //nolint:gosec
 
 type jwtPayload struct {
 	Allow []auth.Permission
@@ -88,4 +90,12 @@ func ConfigBootstrap(peers []string) func() (dtypes.BootstrapPeers, error) {
 
 func BuiltinBootstrap() (dtypes.BootstrapPeers, error) {
 	return build.BuiltinBootstrap()
+}
+
+func DrandBootstrap() (dtypes.DrandBootstrap, error) {
+	return build.DrandBootstrap()
+}
+
+func SetupJournal(lr repo.LockedRepo) error {
+	return journal.InitializeSystemJournal(filepath.Join(lr.Path(), "journal"))
 }
