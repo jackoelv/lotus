@@ -23,12 +23,15 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-address"
+
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/stmgr"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/lib/sigs"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
+
+	"github.com/raulk/clock"
 )
 
 var log = logging.Logger("messagepool")
@@ -66,7 +69,7 @@ type MessagePool struct {
 	lk sync.Mutex
 
 	closer  chan struct{}
-	repubTk *time.Ticker
+	repubTk *clock.Ticker
 
 	localAddrs map[address.Address]struct{}
 
@@ -114,12 +117,14 @@ func (ms *msgSet) add(m *types.SignedMessage) error {
 			minPrice := exms.Message.GasPrice
 			minPrice = types.BigAdd(minPrice, types.BigDiv(types.BigMul(minPrice, rbfNum), rbfDenom))
 			minPrice = types.BigAdd(minPrice, types.NewInt(1))
-			if types.BigCmp(m.Message.GasPrice, minPrice) > 0 {
+			if types.BigCmp(m.Message.GasPrice, minPrice) >= 0 {
 				log.Infow("add with RBF", "oldprice", exms.Message.GasPrice,
 					"newprice", m.Message.GasPrice, "addr", m.Message.From, "nonce", m.Message.Nonce)
 			} else {
 				log.Info("add with duplicate nonce")
-				return xerrors.Errorf("message to %s with nonce %d already in mpool", m.Message.To, m.Message.Nonce)
+				return xerrors.Errorf("message from %s with nonce %d already in mpool,"+
+					" increase GasPrice to %s from %s to trigger replace by fee",
+					m.Message.From, m.Message.Nonce, minPrice, m.Message.GasPrice)
 			}
 		}
 	}
@@ -162,7 +167,8 @@ func (mpp *mpoolProvider) PubSubPublish(k string, v []byte) error {
 }
 
 func (mpp *mpoolProvider) StateGetActor(addr address.Address, ts *types.TipSet) (*types.Actor, error) {
-	return mpp.sm.GetActor(addr, ts)
+	var act types.Actor
+	return &act, mpp.sm.WithParentState(ts, mpp.sm.WithActor(addr, stmgr.GetActor(&act)))
 }
 
 func (mpp *mpoolProvider) StateAccountKey(ctx context.Context, addr address.Address, ts *types.TipSet) (address.Address, error) {
@@ -187,7 +193,7 @@ func New(api Provider, ds dtypes.MetadataDS, netName dtypes.NetworkName) (*Messa
 
 	mp := &MessagePool{
 		closer:        make(chan struct{}),
-		repubTk:       time.NewTicker(build.BlockDelay * 10 * time.Second),
+		repubTk:       build.Clock.Ticker(time.Duration(build.BlockDelaySecs) * 10 * time.Second),
 		localAddrs:    make(map[address.Address]struct{}),
 		pending:       make(map[address.Address]*msgSet),
 		minGasPrice:   types.NewInt(0),
@@ -613,6 +619,14 @@ func (mp *MessagePool) Pending() ([]*types.SignedMessage, *types.TipSet) {
 
 	return out, mp.curTs
 }
+func (mp *MessagePool) PendingFor(a address.Address) ([]*types.SignedMessage, *types.TipSet) {
+	mp.curTsLk.Lock()
+	defer mp.curTsLk.Unlock()
+
+	mp.lk.Lock()
+	defer mp.lk.Unlock()
+	return mp.pendingFor(a), mp.curTs
+}
 
 func (mp *MessagePool) pendingFor(a address.Address) []*types.SignedMessage {
 	mset := mp.pending[a]
@@ -867,18 +881,4 @@ func (mp *MessagePool) loadLocal() error {
 	}
 
 	return nil
-}
-
-const MinGasPrice = 0
-
-func (mp *MessagePool) EstimateGasPrice(ctx context.Context, nblocksincl uint64, sender address.Address, gaslimit int64, tsk types.TipSetKey) (types.BigInt, error) {
-	// TODO: something smarter obviously
-	switch nblocksincl {
-	case 0:
-		return types.NewInt(MinGasPrice + 2), nil
-	case 1:
-		return types.NewInt(MinGasPrice + 1), nil
-	default:
-		return types.NewInt(MinGasPrice), nil
-	}
 }

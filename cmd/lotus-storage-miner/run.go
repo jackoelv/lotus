@@ -11,8 +11,8 @@ import (
 	mux "github.com/gorilla/mux"
 	"github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr-net"
+	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
-	"gopkg.in/urfave/cli.v2"
 
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/go-jsonrpc/auth"
@@ -30,7 +30,7 @@ import (
 
 var runCmd = &cli.Command{
 	Name:  "run",
-	Usage: "Start a lotus storage miner process",
+	Usage: "Start a lotus miner process",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "api",
@@ -86,8 +86,8 @@ var runCmd = &cli.Command{
 			}
 		}
 
-		storageRepoPath := cctx.String(FlagStorageRepo)
-		r, err := repo.NewFS(storageRepoPath)
+		minerRepoPath := cctx.String(FlagMinerRepo)
+		r, err := repo.NewFS(minerRepoPath)
 		if err != nil {
 			return err
 		}
@@ -97,7 +97,7 @@ var runCmd = &cli.Command{
 			return err
 		}
 		if !ok {
-			return xerrors.Errorf("repo at '%s' is not initialized, run 'lotus-storage-miner init' to set it up", storageRepoPath)
+			return xerrors.Errorf("repo at '%s' is not initialized, run 'lotus-miner init' to set it up", minerRepoPath)
 		}
 
 		shutdownChan := make(chan struct{})

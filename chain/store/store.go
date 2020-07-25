@@ -14,18 +14,16 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/specs-actors/actors/abi"
-	"github.com/filecoin-project/specs-actors/actors/runtime"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/state"
 	"github.com/filecoin-project/lotus/chain/vm"
+	"github.com/filecoin-project/lotus/journal"
 	"github.com/filecoin-project/lotus/metrics"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
-
-	amt "github.com/filecoin-project/go-amt-ipld/v2"
 
 	"github.com/filecoin-project/lotus/chain/types"
 
@@ -47,7 +45,20 @@ import (
 var log = logging.Logger("chainstore")
 
 var chainHeadKey = dstore.NewKey("head")
+var blockValidationCacheKeyPrefix = dstore.NewKey("blockValidation")
 
+// ReorgNotifee represents a callback that gets called upon reorgs.
+type ReorgNotifee func(rev, app []*types.TipSet) error
+
+// ChainStore is the main point of access to chain data.
+//
+// Raw chain data is stored in the Blockstore, with relevant markers (genesis,
+// latest head tipset references) being tracked in the Datastore (key-value
+// store).
+//
+// To alleviate disk access, the ChainStore has two ARC caches:
+//   1. a tipset cache
+//   2. a block => messages references cache.
 type ChainStore struct {
 	bs bstore.Blockstore
 	ds dstore.Datastore
@@ -63,16 +74,16 @@ type ChainStore struct {
 
 	cindex *ChainIndex
 
-	reorgCh          chan<- reorg
-	headChangeNotifs []func(rev, app []*types.TipSet) error
+	reorgCh        chan<- reorg
+	reorgNotifeeCh chan ReorgNotifee
 
 	mmCache *lru.ARCCache
 	tsCache *lru.ARCCache
 
-	vmcalls runtime.Syscalls
+	vmcalls vm.SyscallBuilder
 }
 
-func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls runtime.Syscalls) *ChainStore {
+func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls vm.SyscallBuilder) *ChainStore {
 	c, _ := lru.NewARC(2048)
 	tsc, _ := lru.NewARC(4096)
 	cs := &ChainStore{
@@ -88,8 +99,6 @@ func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls runtime.Sys
 	ci := NewChainIndex(cs.LoadTipSet)
 
 	cs.cindex = ci
-
-	cs.reorgCh = cs.reorgWorker(context.TODO())
 
 	hcnf := func(rev, app []*types.TipSet) error {
 		cs.pubLk.Lock()
@@ -122,7 +131,8 @@ func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls runtime.Sys
 		return nil
 	}
 
-	cs.headChangeNotifs = append(cs.headChangeNotifs, hcnf, hcmetric)
+	cs.reorgNotifeeCh = make(chan ReorgNotifee)
+	cs.reorgCh = cs.reorgWorker(context.TODO(), []ReorgNotifee{hcnf, hcmetric})
 
 	return cs
 }
@@ -211,8 +221,24 @@ func (cs *ChainStore) SubHeadChanges(ctx context.Context) chan []*api.HeadChange
 	return out
 }
 
-func (cs *ChainStore) SubscribeHeadChanges(f func(rev, app []*types.TipSet) error) {
-	cs.headChangeNotifs = append(cs.headChangeNotifs, f)
+func (cs *ChainStore) SubscribeHeadChanges(f ReorgNotifee) {
+	cs.reorgNotifeeCh <- f
+}
+
+func (cs *ChainStore) IsBlockValidated(ctx context.Context, blkid cid.Cid) (bool, error) {
+	key := blockValidationCacheKeyPrefix.Instance(blkid.String())
+
+	return cs.ds.Has(key)
+}
+
+func (cs *ChainStore) MarkBlockAsValidated(ctx context.Context, blkid cid.Cid) error {
+	key := blockValidationCacheKeyPrefix.Instance(blkid.String())
+
+	if err := cs.ds.Put(key, []byte{0}); err != nil {
+		return xerrors.Errorf("cache block validation: %w", err)
+	}
+
+	return nil
 }
 
 func (cs *ChainStore) SetGenesis(b *types.BlockHeader) error {
@@ -247,6 +273,9 @@ func (cs *ChainStore) PutTipSet(ctx context.Context, ts *types.TipSet) error {
 	return nil
 }
 
+// MaybeTakeHeavierTipSet evaluates the incoming tipset and locks it in our
+// internal state as our new head, if and only if it is heavier than the current
+// head.
 func (cs *ChainStore) MaybeTakeHeavierTipSet(ctx context.Context, ts *types.TipSet) error {
 	cs.heaviestLk.Lock()
 	defer cs.heaviestLk.Unlock()
@@ -273,13 +302,19 @@ type reorg struct {
 	new *types.TipSet
 }
 
-func (cs *ChainStore) reorgWorker(ctx context.Context) chan<- reorg {
+func (cs *ChainStore) reorgWorker(ctx context.Context, initialNotifees []ReorgNotifee) chan<- reorg {
 	out := make(chan reorg, 32)
+	notifees := make([]ReorgNotifee, len(initialNotifees))
+	copy(notifees, initialNotifees)
+
 	go func() {
 		defer log.Warn("reorgWorker quit")
 
 		for {
 			select {
+			case n := <-cs.reorgNotifeeCh:
+				notifees = append(notifees, n)
+
 			case r := <-out:
 				revert, apply, err := cs.ReorgOps(r.old, r.new)
 				if err != nil {
@@ -287,13 +322,21 @@ func (cs *ChainStore) reorgWorker(ctx context.Context) chan<- reorg {
 					continue
 				}
 
+				journal.Add("sync", map[string]interface{}{
+					"op":    "headChange",
+					"from":  r.old.Key(),
+					"to":    r.new.Key(),
+					"rev":   len(revert),
+					"apply": len(apply),
+				})
+
 				// reverse the apply array
 				for i := len(apply)/2 - 1; i >= 0; i-- {
 					opp := len(apply) - 1 - i
 					apply[i], apply[opp] = apply[opp], apply[i]
 				}
 
-				for _, hcf := range cs.headChangeNotifs {
+				for _, hcf := range notifees {
 					if err := hcf(revert, apply); err != nil {
 						log.Error("head change func errored (BAD): ", err)
 					}
@@ -306,6 +349,9 @@ func (cs *ChainStore) reorgWorker(ctx context.Context) chan<- reorg {
 	return out
 }
 
+// takeHeaviestTipSet actually sets the incoming tipset as our head both in
+// memory and in the ChainStore. It also sends a notification to deliver to
+// ReorgNotifees.
 func (cs *ChainStore) takeHeaviestTipSet(ctx context.Context, ts *types.TipSet) error {
 	_, span := trace.StartSpan(ctx, "takeHeaviestTipSet")
 	defer span.End()
@@ -343,6 +389,7 @@ func (cs *ChainStore) SetHead(ts *types.TipSet) error {
 	return cs.takeHeaviestTipSet(context.TODO(), ts)
 }
 
+// Contains returns whether our BlockStore has all blocks in the supplied TipSet.
 func (cs *ChainStore) Contains(ts *types.TipSet) (bool, error) {
 	for _, c := range ts.Cids() {
 		has, err := cs.bs.Has(c)
@@ -357,6 +404,8 @@ func (cs *ChainStore) Contains(ts *types.TipSet) (bool, error) {
 	return true, nil
 }
 
+// GetBlock fetches a BlockHeader with the supplied CID. It returns
+// blockstore.ErrNotFound if the block was not found in the BlockStore.
 func (cs *ChainStore) GetBlock(c cid.Cid) (*types.BlockHeader, error) {
 	sb, err := cs.bs.Get(c)
 	if err != nil {
@@ -392,7 +441,7 @@ func (cs *ChainStore) LoadTipSet(tsk types.TipSetKey) (*types.TipSet, error) {
 	return ts, nil
 }
 
-// returns true if 'a' is an ancestor of 'b'
+// IsAncestorOf returns true if 'a' is an ancestor of 'b'
 func (cs *ChainStore) IsAncestorOf(a, b *types.TipSet) (bool, error) {
 	if b.Height() <= a.Height() {
 		return false, nil
@@ -449,6 +498,7 @@ func (cs *ChainStore) ReorgOps(a, b *types.TipSet) ([]*types.TipSet, []*types.Ti
 	return leftChain, rightChain, nil
 }
 
+// GetHeaviestTipSet returns the current heaviest tipset known (i.e. our head).
 func (cs *ChainStore) GetHeaviestTipSet() *types.TipSet {
 	cs.heaviestLk.Lock()
 	defer cs.heaviestLk.Unlock()
@@ -605,7 +655,7 @@ func (cs *ChainStore) GetCMessage(c cid.Cid) (types.ChainMsg, error) {
 		return m, nil
 	}
 	if err != bstore.ErrNotFound {
-		log.Warn("GetCMessage: unexpected error getting unsigned message: %s", err)
+		log.Warnf("GetCMessage: unexpected error getting unsigned message: %s", err)
 	}
 
 	return cs.GetSignedMessage(c)
@@ -633,20 +683,25 @@ func (cs *ChainStore) GetSignedMessage(c cid.Cid) (*types.SignedMessage, error) 
 
 func (cs *ChainStore) readAMTCids(root cid.Cid) ([]cid.Cid, error) {
 	ctx := context.TODO()
-	bs := cbor.NewCborStore(cs.bs)
-	a, err := amt.LoadAMT(ctx, bs, root)
+	a, err := adt.AsArray(cs.Store(ctx), root)
 	if err != nil {
 		return nil, xerrors.Errorf("amt load: %w", err)
 	}
 
-	var cids []cid.Cid
-	for i := uint64(0); i < a.Count; i++ {
-		var c cbg.CborCid
-		if err := a.Get(ctx, i, &c); err != nil {
-			return nil, xerrors.Errorf("failed to load cid from amt: %w", err)
-		}
+	var (
+		cids    []cid.Cid
+		cborCid cbg.CborCid
+	)
+	if err := a.ForEach(&cborCid, func(i int64) error {
+		c := cid.Cid(cborCid)
+		cids = append(cids, c)
+		return nil
+	}); err != nil {
+		return nil, xerrors.Errorf("failed to traverse amt: %w", err)
+	}
 
-		cids = append(cids, cid.Cid(c))
+	if uint64(len(cids)) != a.Length() {
+		return nil, xerrors.Errorf("found %d cids, expected %d", len(cids), a.Length())
 	}
 
 	return cids, nil
@@ -794,15 +849,16 @@ func (cs *ChainStore) MessagesForBlock(b *types.BlockHeader) ([]*types.Message, 
 
 func (cs *ChainStore) GetParentReceipt(b *types.BlockHeader, i int) (*types.MessageReceipt, error) {
 	ctx := context.TODO()
-	bs := cbor.NewCborStore(cs.bs)
-	a, err := amt.LoadAMT(ctx, bs, b.ParentMessageReceipts)
+	a, err := adt.AsArray(cs.Store(ctx), b.ParentMessageReceipts)
 	if err != nil {
 		return nil, xerrors.Errorf("amt load: %w", err)
 	}
 
 	var r types.MessageReceipt
-	if err := a.Get(ctx, uint64(i), &r); err != nil {
+	if found, err := a.Get(uint64(i), &r); err != nil {
 		return nil, err
+	} else if !found {
+		return nil, xerrors.Errorf("failed to find receipt %d", i)
 	}
 
 	return &r, nil
@@ -841,34 +897,14 @@ func (cs *ChainStore) Blockstore() bstore.Blockstore {
 }
 
 func ActorStore(ctx context.Context, bs blockstore.Blockstore) adt.Store {
-	return &astore{
-		cst: cbor.NewCborStore(bs),
-		ctx: ctx,
-	}
-}
-
-type astore struct {
-	cst cbor.IpldStore
-	ctx context.Context
-}
-
-func (a *astore) Context() context.Context {
-	return a.ctx
-}
-
-func (a *astore) Get(ctx context.Context, c cid.Cid, out interface{}) error {
-	return a.cst.Get(ctx, c, out)
-}
-
-func (a *astore) Put(ctx context.Context, v interface{}) (cid.Cid, error) {
-	return a.cst.Put(ctx, v)
+	return adt.WrapStore(ctx, cbor.NewCborStore(bs))
 }
 
 func (cs *ChainStore) Store(ctx context.Context) adt.Store {
 	return ActorStore(ctx, cs.bs)
 }
 
-func (cs *ChainStore) VMSys() runtime.Syscalls {
+func (cs *ChainStore) VMSys() vm.SyscallBuilder {
 	return cs.vmcalls
 }
 
@@ -900,39 +936,50 @@ func DrawRandomness(rbase []byte, pers crypto.DomainSeparationTag, round abi.Cha
 		return nil, xerrors.Errorf("deriving randomness: %w", err)
 	}
 	VRFDigest := blake2b.Sum256(rbase)
-	h.Write(VRFDigest[:])
+	_, err := h.Write(VRFDigest[:])
+	if err != nil {
+		return nil, xerrors.Errorf("hashing VRFDigest: %w", err)
+	}
 	if err := binary.Write(h, binary.BigEndian, round); err != nil {
 		return nil, xerrors.Errorf("deriving randomness: %w", err)
 	}
-	h.Write(entropy)
+	_, err = h.Write(entropy)
+	if err != nil {
+		return nil, xerrors.Errorf("hashing entropy: %w", err)
+	}
 
 	return h.Sum(nil), nil
 }
 
-func (cs *ChainStore) GetRandomness(ctx context.Context, blks []cid.Cid, pers crypto.DomainSeparationTag, round abi.ChainEpoch, entropy []byte) (out []byte, err error) {
+func (cs *ChainStore) GetRandomness(ctx context.Context, blks []cid.Cid, pers crypto.DomainSeparationTag, round abi.ChainEpoch, entropy []byte) ([]byte, error) {
 	_, span := trace.StartSpan(ctx, "store.GetRandomness")
 	defer span.End()
 	span.AddAttributes(trace.Int64Attribute("round", int64(round)))
 
-	//defer func() {
-	//log.Infof("getRand %v %d %d %x -> %x", blks, pers, round, entropy, out)
-	//}()
-	for {
-		nts, err := cs.LoadTipSet(types.NewTipSetKey(blks...))
-		if err != nil {
-			return nil, err
-		}
-
-		mtb := nts.MinTicketBlock()
-
-		// if at (or just past -- for null epochs) appropriate epoch
-		// or at genesis (works for negative epochs)
-		if nts.Height() <= round || mtb.Height == 0 {
-			return DrawRandomness(nts.MinTicketBlock().Ticket.VRFProof, pers, round, entropy)
-		}
-
-		blks = mtb.Parents
+	ts, err := cs.LoadTipSet(types.NewTipSetKey(blks...))
+	if err != nil {
+		return nil, err
 	}
+
+	if round > ts.Height() {
+		return nil, xerrors.Errorf("cannot draw randomness from the future")
+	}
+
+	searchHeight := round
+	if searchHeight < 0 {
+		searchHeight = 0
+	}
+
+	randTs, err := cs.GetTipsetByHeight(ctx, searchHeight, ts, true)
+	if err != nil {
+		return nil, err
+	}
+
+	mtb := randTs.MinTicketBlock()
+
+	// if at (or just past -- for null epochs) appropriate epoch
+	// or at genesis (works for negative epochs)
+	return DrawRandomness(mtb.Ticket.VRFProof, pers, round, entropy)
 }
 
 // GetTipsetByHeight returns the tipset on the chain behind 'ts' at the given
@@ -982,21 +1029,25 @@ func recurseLinks(bs blockstore.Blockstore, root cid.Cid, in []cid.Cid) ([]cid.C
 		return nil, xerrors.Errorf("recurse links get (%s) failed: %w", root, err)
 	}
 
-	top, err := cbg.ScanForLinks(bytes.NewReader(data.RawData()))
+	var rerr error
+	err = cbg.ScanForLinks(bytes.NewReader(data.RawData()), func(c cid.Cid) {
+		if rerr != nil {
+			// No error return on ScanForLinks :(
+			return
+		}
+
+		in = append(in, c)
+		var err error
+		in, err = recurseLinks(bs, c, in)
+		if err != nil {
+			rerr = err
+		}
+	})
 	if err != nil {
 		return nil, xerrors.Errorf("scanning for links failed: %w", err)
 	}
 
-	in = append(in, top...)
-	for _, c := range top {
-		var err error
-		in, err = recurseLinks(bs, c, in)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return in, nil
+	return in, rerr
 }
 
 func (cs *ChainStore) Export(ctx context.Context, ts *types.TipSet, w io.Writer) error {
@@ -1149,7 +1200,6 @@ func (cr *chainRand) GetRandomness(ctx context.Context, pers crypto.DomainSepara
 func (cs *ChainStore) GetTipSetFromKey(tsk types.TipSetKey) (*types.TipSet, error) {
 	if tsk.IsEmpty() {
 		return cs.GetHeaviestTipSet(), nil
-	} else {
-		return cs.LoadTipSet(tsk)
 	}
+	return cs.LoadTipSet(tsk)
 }
