@@ -361,9 +361,32 @@ func (a *StateAPI) StateWaitMsg(ctx context.Context, msg cid.Cid, confidence uin
 		return nil, err
 	}
 
+	var returndec interface{}
+	if recpt.ExitCode == 0 && len(recpt.Return) > 0 {
+		cmsg, err := a.Chain.GetCMessage(msg)
+		if err != nil {
+			return nil, xerrors.Errorf("failed to load message after successful receipt search: %w", err)
+		}
+
+		vmsg := cmsg.VMMessage()
+
+		t, err := stmgr.GetReturnType(ctx, a.StateManager, vmsg.To, vmsg.Method, ts)
+		if err != nil {
+			return nil, xerrors.Errorf("failed to get return type: %w", err)
+		}
+
+		if err := t.UnmarshalCBOR(bytes.NewReader(recpt.Return)); err != nil {
+			return nil, err
+		}
+
+		returndec = t
+	}
+
 	return &api.MsgLookup{
-		Receipt: *recpt,
-		TipSet:  ts,
+		Receipt:   *recpt,
+		ReturnDec: returndec,
+		TipSet:    ts.Key(),
+		Height:    ts.Height(),
 	}, nil
 }
 
@@ -376,7 +399,8 @@ func (a *StateAPI) StateSearchMsg(ctx context.Context, msg cid.Cid) (*api.MsgLoo
 	if ts != nil {
 		return &api.MsgLookup{
 			Receipt: *recpt,
-			TipSet:  ts,
+			TipSet:  ts.Key(),
+			Height:  ts.Height(),
 		}, nil
 	} else {
 		return nil, nil
