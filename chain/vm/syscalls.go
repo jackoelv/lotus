@@ -21,6 +21,7 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/builtin/miner"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
+	"github.com/filecoin-project/specs-actors/actors/util/adt"
 
 	"github.com/filecoin-project/sector-storage/ffiwrapper"
 )
@@ -31,15 +32,26 @@ func init() {
 
 // Actual type is defined in chain/types/vmcontext.go because the VMContext interface is there
 
-func Syscalls(verifier ffiwrapper.Verifier) runtime.Syscalls {
-	return &syscallShim{verifier: verifier}
+type SyscallBuilder func(ctx context.Context, cstate *state.StateTree, cst cbor.IpldStore) runtime.Syscalls
+
+func Syscalls(verifier ffiwrapper.Verifier) SyscallBuilder {
+	return func(ctx context.Context, cstate *state.StateTree, cst cbor.IpldStore) runtime.Syscalls {
+		return &syscallShim{
+			ctx: ctx,
+
+			cstate: cstate,
+			cst:    cst,
+
+			verifier: verifier,
+		}
+	}
 }
 
 type syscallShim struct {
 	ctx context.Context
 
 	cstate   *state.StateTree
-	cst      *cbor.BasicIpldStore
+	cst      cbor.IpldStore
 	verifier ffiwrapper.Verifier
 }
 
@@ -73,11 +85,6 @@ func (ss *syscallShim) VerifyConsensusFault(a, b, extra []byte) (*runtime.Consen
 
 	// (0) cheap preliminary checks
 
-	// are blocks the same?
-	if bytes.Equal(a, b) {
-		return nil, fmt.Errorf("no consensus fault: submitted blocks are the same")
-	}
-
 	// can blocks be decoded properly?
 	var blockA, blockB types.BlockHeader
 	if decodeErr := blockA.UnmarshalCBOR(bytes.NewReader(a)); decodeErr != nil {
@@ -86,6 +93,11 @@ func (ss *syscallShim) VerifyConsensusFault(a, b, extra []byte) (*runtime.Consen
 
 	if decodeErr := blockB.UnmarshalCBOR(bytes.NewReader(b)); decodeErr != nil {
 		return nil, xerrors.Errorf("cannot decode second block header: %f", decodeErr)
+	}
+
+	// are blocks the same?
+	if blockA.Cid().Equals(blockB.Cid()) {
+		return nil, fmt.Errorf("no consensus fault: submitted blocks are the same")
 	}
 
 	// (1) check conditions necessary to any consensus fault
@@ -145,7 +157,7 @@ func (ss *syscallShim) VerifyConsensusFault(a, b, extra []byte) (*runtime.Consen
 
 	// (3) return if no consensus fault by now
 	if consensusFault == nil {
-		return consensusFault, nil
+		return nil, xerrors.Errorf("no consensus fault detected")
 	}
 
 	// else
@@ -179,8 +191,13 @@ func (ss *syscallShim) VerifyBlockSig(blk *types.BlockHeader) error {
 		return err
 	}
 
+	info, err := mas.GetInfo(adt.WrapStore(ss.ctx, ss.cst))
+	if err != nil {
+		return err
+	}
+
 	// and use to get resolved workerKey
-	waddr, err := ResolveToKeyAddr(ss.cstate, ss.cst, mas.Info.Worker)
+	waddr, err := ResolveToKeyAddr(ss.cstate, ss.cst, info.Worker)
 	if err != nil {
 		return err
 	}

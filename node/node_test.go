@@ -107,7 +107,7 @@ func testStorageNode(ctx context.Context, t *testing.T, waddr address.Address, a
 		Params:   enc,
 		Value:    types.NewInt(0),
 		GasPrice: types.NewInt(0),
-		GasLimit: 1000000,
+		GasLimit: 0,
 	}
 
 	_, err = tnd.MpoolPushMessage(ctx, msg)
@@ -202,7 +202,7 @@ func builder(t *testing.T, nFull int, storage []test.StorageMiner) ([]test.TestN
 
 		genaccs = append(genaccs, genesis.Actor{
 			Type:    genesis.TAccount,
-			Balance: big.Mul(big.NewInt(50000), types.NewInt(build.FilecoinPrecision)),
+			Balance: big.Mul(big.NewInt(400_000_000), types.NewInt(build.FilecoinPrecision)),
 			Meta:    (&genesis.AccountMeta{Owner: wk.Address}).ActorMeta(),
 		})
 
@@ -336,7 +336,7 @@ func mockSbBuilder(t *testing.T, nFull int, storage []test.StorageMiner) ([]test
 
 		genaccs = append(genaccs, genesis.Actor{
 			Type:    genesis.TAccount,
-			Balance: big.Mul(big.NewInt(50000), types.NewInt(build.FilecoinPrecision)),
+			Balance: big.Mul(big.NewInt(400_000_000_000), types.NewInt(build.FilecoinPrecision)),
 			Meta:    (&genesis.AccountMeta{Owner: wk.Address}).ActorMeta(),
 		})
 
@@ -380,8 +380,12 @@ func mockSbBuilder(t *testing.T, nFull int, storage []test.StorageMiner) ([]test
 		}
 	}
 
+
 	for i, def := range storage {
 		// TODO: support non-bootstrap miners
+
+		minerID := abi.ActorID(genesis2.MinerStart + uint64(i))
+
 		if def.Full != 0 {
 			t.Fatal("storage nodes only supported on the first full node")
 		}
@@ -394,9 +398,17 @@ func mockSbBuilder(t *testing.T, nFull int, storage []test.StorageMiner) ([]test
 			return nil, nil
 		}
 
+		sectors := make([]abi.SectorID, len(genms[i].Sectors))
+		for i, sector := range genms[i].Sectors {
+			sectors[i] = abi.SectorID{
+				Miner:  minerID,
+				Number: sector.SectorID,
+			}
+		}
+
 		storers[i] = testStorageNode(ctx, t, genms[i].Worker, maddrs[i], pidKeys[i], f, mn, node.Options(
 			node.Override(new(sectorstorage.SectorManager), func() (sectorstorage.SectorManager, error) {
-				return mock.NewMockSectorMgr(build.DefaultSectorSize()), nil
+				return mock.NewMockSectorMgr(build.DefaultSectorSize(), sectors), nil
 			}),
 			node.Override(new(ffiwrapper.Verifier), mock.MockVerifier),
 			node.Unset(new(*sectorstorage.Manager)),
@@ -459,10 +471,10 @@ func TestAPIDealFlow(t *testing.T) {
 	logging.SetLogLevel("storageminer", "ERROR")
 
 	t.Run("TestDealFlow", func(t *testing.T) {
-		test.TestDealFlow(t, mockSbBuilder, 10*time.Millisecond, false)
+		test.TestDealFlow(t, mockSbBuilder, 10*time.Millisecond, false, false)
 	})
 	t.Run("WithExportedCAR", func(t *testing.T) {
-		test.TestDealFlow(t, mockSbBuilder, 10*time.Millisecond, true)
+		test.TestDealFlow(t, mockSbBuilder, 10*time.Millisecond, true, false)
 	})
 	t.Run("TestDoubleDealFlow", func(t *testing.T) {
 		test.TestDoubleDealFlow(t, mockSbBuilder, 10*time.Millisecond)
@@ -480,7 +492,13 @@ func TestAPIDealFlowReal(t *testing.T) {
 	logging.SetLogLevel("sub", "ERROR")
 	logging.SetLogLevel("storageminer", "ERROR")
 
-	test.TestDealFlow(t, builder, time.Second, false)
+	t.Run("basic", func(t *testing.T) {
+		test.TestDealFlow(t, builder, time.Second, false, false)
+	})
+
+	t.Run("fast-retrieval", func(t *testing.T) {
+		test.TestDealFlow(t, builder, time.Second, false, true)
+	})
 }
 
 func TestDealMining(t *testing.T) {
@@ -528,5 +546,26 @@ func TestWindowedPost(t *testing.T) {
 	logging.SetLogLevel("sub", "ERROR")
 	logging.SetLogLevel("storageminer", "ERROR")
 
-	test.TestWindowPost(t, mockSbBuilder, 5*time.Millisecond, 10)
+	test.TestWindowPost(t, mockSbBuilder, 2*time.Millisecond, 10)
+}
+
+func TestCCUpgrade(t *testing.T) {
+	logging.SetLogLevel("miner", "ERROR")
+	logging.SetLogLevel("chainstore", "ERROR")
+	logging.SetLogLevel("chain", "ERROR")
+	logging.SetLogLevel("sub", "ERROR")
+	logging.SetLogLevel("storageminer", "ERROR")
+
+	test.TestCCUpgrade(t, mockSbBuilder, 5*time.Millisecond)
+}
+
+func TestPaymentChannels(t *testing.T) {
+	logging.SetLogLevel("miner", "ERROR")
+	logging.SetLogLevel("chainstore", "ERROR")
+	logging.SetLogLevel("chain", "ERROR")
+	logging.SetLogLevel("sub", "ERROR")
+	logging.SetLogLevel("pubsub", "ERROR")
+	logging.SetLogLevel("storageminer", "ERROR")
+
+	test.TestPaymentChannels(t, mockSbBuilder, 5*time.Millisecond)
 }

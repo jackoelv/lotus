@@ -14,7 +14,6 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/specs-actors/actors/abi"
-	"github.com/filecoin-project/specs-actors/actors/runtime"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 
 	"github.com/filecoin-project/lotus/api"
@@ -25,8 +24,6 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
-
-	amt "github.com/filecoin-project/go-amt-ipld/v2"
 
 	"github.com/filecoin-project/lotus/chain/types"
 
@@ -83,10 +80,10 @@ type ChainStore struct {
 	mmCache *lru.ARCCache
 	tsCache *lru.ARCCache
 
-	vmcalls runtime.Syscalls
+	vmcalls vm.SyscallBuilder
 }
 
-func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls runtime.Syscalls) *ChainStore {
+func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls vm.SyscallBuilder) *ChainStore {
 	c, _ := lru.NewARC(2048)
 	tsc, _ := lru.NewARC(4096)
 	cs := &ChainStore{
@@ -658,7 +655,7 @@ func (cs *ChainStore) GetCMessage(c cid.Cid) (types.ChainMsg, error) {
 		return m, nil
 	}
 	if err != bstore.ErrNotFound {
-		log.Warn("GetCMessage: unexpected error getting unsigned message: %s", err)
+		log.Warnf("GetCMessage: unexpected error getting unsigned message: %s", err)
 	}
 
 	return cs.GetSignedMessage(c)
@@ -686,20 +683,25 @@ func (cs *ChainStore) GetSignedMessage(c cid.Cid) (*types.SignedMessage, error) 
 
 func (cs *ChainStore) readAMTCids(root cid.Cid) ([]cid.Cid, error) {
 	ctx := context.TODO()
-	bs := cbor.NewCborStore(cs.bs)
-	a, err := amt.LoadAMT(ctx, bs, root)
+	a, err := adt.AsArray(cs.Store(ctx), root)
 	if err != nil {
 		return nil, xerrors.Errorf("amt load: %w", err)
 	}
 
-	var cids []cid.Cid
-	for i := uint64(0); i < a.Count; i++ {
-		var c cbg.CborCid
-		if err := a.Get(ctx, i, &c); err != nil {
-			return nil, xerrors.Errorf("failed to load cid from amt: %w", err)
-		}
+	var (
+		cids    []cid.Cid
+		cborCid cbg.CborCid
+	)
+	if err := a.ForEach(&cborCid, func(i int64) error {
+		c := cid.Cid(cborCid)
+		cids = append(cids, c)
+		return nil
+	}); err != nil {
+		return nil, xerrors.Errorf("failed to traverse amt: %w", err)
+	}
 
-		cids = append(cids, cid.Cid(c))
+	if uint64(len(cids)) != a.Length() {
+		return nil, xerrors.Errorf("found %d cids, expected %d", len(cids), a.Length())
 	}
 
 	return cids, nil
@@ -847,15 +849,16 @@ func (cs *ChainStore) MessagesForBlock(b *types.BlockHeader) ([]*types.Message, 
 
 func (cs *ChainStore) GetParentReceipt(b *types.BlockHeader, i int) (*types.MessageReceipt, error) {
 	ctx := context.TODO()
-	bs := cbor.NewCborStore(cs.bs)
-	a, err := amt.LoadAMT(ctx, bs, b.ParentMessageReceipts)
+	a, err := adt.AsArray(cs.Store(ctx), b.ParentMessageReceipts)
 	if err != nil {
 		return nil, xerrors.Errorf("amt load: %w", err)
 	}
 
 	var r types.MessageReceipt
-	if err := a.Get(ctx, uint64(i), &r); err != nil {
+	if found, err := a.Get(uint64(i), &r); err != nil {
 		return nil, err
+	} else if !found {
+		return nil, xerrors.Errorf("failed to find receipt %d", i)
 	}
 
 	return &r, nil
@@ -894,34 +897,14 @@ func (cs *ChainStore) Blockstore() bstore.Blockstore {
 }
 
 func ActorStore(ctx context.Context, bs blockstore.Blockstore) adt.Store {
-	return &astore{
-		cst: cbor.NewCborStore(bs),
-		ctx: ctx,
-	}
-}
-
-type astore struct {
-	cst cbor.IpldStore
-	ctx context.Context
-}
-
-func (a *astore) Context() context.Context {
-	return a.ctx
-}
-
-func (a *astore) Get(ctx context.Context, c cid.Cid, out interface{}) error {
-	return a.cst.Get(ctx, c, out)
-}
-
-func (a *astore) Put(ctx context.Context, v interface{}) (cid.Cid, error) {
-	return a.cst.Put(ctx, v)
+	return adt.WrapStore(ctx, cbor.NewCborStore(bs))
 }
 
 func (cs *ChainStore) Store(ctx context.Context) adt.Store {
 	return ActorStore(ctx, cs.bs)
 }
 
-func (cs *ChainStore) VMSys() runtime.Syscalls {
+func (cs *ChainStore) VMSys() vm.SyscallBuilder {
 	return cs.vmcalls
 }
 
@@ -1046,21 +1029,25 @@ func recurseLinks(bs blockstore.Blockstore, root cid.Cid, in []cid.Cid) ([]cid.C
 		return nil, xerrors.Errorf("recurse links get (%s) failed: %w", root, err)
 	}
 
-	top, err := cbg.ScanForLinks(bytes.NewReader(data.RawData()))
+	var rerr error
+	err = cbg.ScanForLinks(bytes.NewReader(data.RawData()), func(c cid.Cid) {
+		if rerr != nil {
+			// No error return on ScanForLinks :(
+			return
+		}
+
+		in = append(in, c)
+		var err error
+		in, err = recurseLinks(bs, c, in)
+		if err != nil {
+			rerr = err
+		}
+	})
 	if err != nil {
 		return nil, xerrors.Errorf("scanning for links failed: %w", err)
 	}
 
-	in = append(in, top...)
-	for _, c := range top {
-		var err error
-		in, err = recurseLinks(bs, c, in)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return in, nil
+	return in, rerr
 }
 
 func (cs *ChainStore) Export(ctx context.Context, ts *types.TipSet, w io.Writer) error {

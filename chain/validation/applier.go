@@ -2,6 +2,7 @@ package validation
 
 import (
 	"context"
+
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/specs-actors/actors/abi"
@@ -9,7 +10,6 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/puppet"
-	"github.com/filecoin-project/specs-actors/actors/runtime"
 	"github.com/ipfs/go-cid"
 
 	vtypes "github.com/filecoin-project/chain-validation/chain/types"
@@ -24,12 +24,12 @@ import (
 // Applier applies messages to state trees and storage.
 type Applier struct {
 	stateWrapper *StateWrapper
-	syscalls     runtime.Syscalls
+	syscalls     vm.SyscallBuilder
 }
 
 var _ vstate.Applier = &Applier{}
 
-func NewApplier(sw *StateWrapper, syscalls runtime.Syscalls) *Applier {
+func NewApplier(sw *StateWrapper, syscalls vm.SyscallBuilder) *Applier {
 	return &Applier{sw, syscalls}
 }
 
@@ -72,8 +72,8 @@ func (a *Applier) ApplyTipSetMessages(epoch abi.ChainEpoch, blocks []vtypes.Bloc
 	var bms []stmgr.BlockMessages
 	for _, b := range blocks {
 		bm := stmgr.BlockMessages{
-			Miner:       b.Miner,
-			TicketCount: 1,
+			Miner:    b.Miner,
+			WinCount: 1,
 		}
 
 		for _, m := range b.BLSMessages {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"os"
 	"reflect"
 	"sort"
@@ -49,7 +50,7 @@ var stateCmd = &cli.Command{
 	Subcommands: []*cli.Command{
 		statePowerCmd,
 		stateSectorsCmd,
-		stateProvingSetCmd,
+		stateActiveSectorsCmd,
 		statePledgeCollateralCmd,
 		stateListActorsCmd,
 		stateListMinersCmd,
@@ -234,16 +235,16 @@ var stateSectorsCmd = &cli.Command{
 		}
 
 		for _, s := range sectors {
-			fmt.Printf("%d: %x\n", s.Info.Info.SectorNumber, s.Info.Info.SealedCID)
+			fmt.Printf("%d: %x\n", s.Info.SectorNumber, s.Info.SealedCID)
 		}
 
 		return nil
 	},
 }
 
-var stateProvingSetCmd = &cli.Command{
-	Name:      "proving",
-	Usage:     "Query the proving set of a miner",
+var stateActiveSectorsCmd = &cli.Command{
+	Name:      "active-sectors",
+	Usage:     "Query the active sector set of a miner",
 	ArgsUsage: "[minerAddress]",
 	Action: func(cctx *cli.Context) error {
 		api, closer, err := GetFullNodeAPI(cctx)
@@ -268,13 +269,13 @@ var stateProvingSetCmd = &cli.Command{
 			return err
 		}
 
-		sectors, err := api.StateMinerProvingSet(ctx, maddr, ts.Key())
+		sectors, err := api.StateMinerActiveSectors(ctx, maddr, ts.Key())
 		if err != nil {
 			return err
 		}
 
 		for _, s := range sectors {
-			fmt.Printf("%d: %x\n", s.Info.Info.SectorNumber, s.Info.Info.SealedCID)
+			fmt.Printf("%d: %x\n", s.Info.SectorNumber, s.Info.SealedCID)
 		}
 
 		return nil
@@ -874,7 +875,7 @@ var stateComputeStateCmd = &cli.Command{
 				return c.Code, nil
 			}
 
-			return computeStateHTMLTempl(ts, stout, getCode)
+			return ComputeStateHTMLTempl(os.Stdout, ts, stout, getCode)
 		}
 
 		fmt.Println("computed state cid: ", stout.Root)
@@ -1081,7 +1082,7 @@ type compStateHTMLIn struct {
 	Comp   *api.ComputeStateOutput
 }
 
-func computeStateHTMLTempl(ts *types.TipSet, o *api.ComputeStateOutput, getCode func(addr address.Address) (cid.Cid, error)) error {
+func ComputeStateHTMLTempl(w io.Writer, ts *types.TipSet, o *api.ComputeStateOutput, getCode func(addr address.Address) (cid.Cid, error)) error {
 	t, err := template.New("compute_state").Funcs(map[string]interface{}{
 		"GetCode":    getCode,
 		"GetMethod":  getMethod,
@@ -1114,7 +1115,7 @@ func computeStateHTMLTempl(ts *types.TipSet, o *api.ComputeStateOutput, getCode 
 		return err
 	}
 
-	return t.ExecuteTemplate(os.Stdout, "compute_state", &compStateHTMLIn{
+	return t.ExecuteTemplate(w, "compute_state", &compStateHTMLIn{
 		TipSet: ts,
 		Comp:   o,
 	})

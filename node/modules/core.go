@@ -92,8 +92,12 @@ func BuiltinBootstrap() (dtypes.BootstrapPeers, error) {
 	return build.BuiltinBootstrap()
 }
 
-func DrandBootstrap() (dtypes.DrandBootstrap, error) {
-	return build.DrandBootstrap()
+func DrandBootstrap(d dtypes.DrandConfig) (dtypes.DrandBootstrap, error) {
+	return addrutil.ParseAddresses(context.TODO(), d.Relays)
+}
+
+func SetupJournal(lr repo.LockedRepo) error {
+	return journal.InitializeSystemJournal(filepath.Join(lr.Path(), "journal"))
 }
 
 func SetupJournal(lr repo.LockedRepo) error {
