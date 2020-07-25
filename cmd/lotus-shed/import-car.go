@@ -7,8 +7,8 @@ import (
 
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipld/go-car"
+	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
-	"gopkg.in/urfave/cli.v2"
 
 	"github.com/filecoin-project/lotus/node/repo"
 )
@@ -34,7 +34,7 @@ var importCarCmd = &cli.Command{
 		if err != nil {
 			return err
 		}
-		defer lr.Close()
+		defer lr.Close() //nolint:errcheck
 
 		cf := cctx.Args().Get(0)
 		f, err := os.OpenFile(cf, os.O_RDONLY, 0664)
@@ -42,7 +42,7 @@ var importCarCmd = &cli.Command{
 			return xerrors.Errorf("opening the car file: %w", err)
 		}
 
-		ds, err := lr.Datastore("/blocks")
+		ds, err := lr.Datastore("/chain")
 		if err != nil {
 			return err
 		}
@@ -65,11 +65,17 @@ var importCarCmd = &cli.Command{
 				fmt.Println()
 				return ds.Close()
 			default:
+				if err := f.Close(); err != nil {
+					return err
+				}
 				fmt.Println()
 				return err
 			case nil:
 				fmt.Printf("\r%s", blk.Cid())
 				if err := bs.Put(blk); err != nil {
+					if err := f.Close(); err != nil {
+						return err
+					}
 					return xerrors.Errorf("put %s: %w", blk.Cid(), err)
 				}
 			}

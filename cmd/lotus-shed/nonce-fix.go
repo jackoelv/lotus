@@ -5,7 +5,7 @@ import (
 	"math"
 
 	"github.com/filecoin-project/go-address"
-	"gopkg.in/urfave/cli.v2"
+	"github.com/urfave/cli/v2"
 
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
@@ -89,7 +89,7 @@ var noncefix = &cli.Command{
 				From:     addr,
 				To:       addr,
 				Value:    types.NewInt(1),
-				GasLimit: 10000,
+				GasLimit: 0,
 				GasPrice: types.NewInt(1),
 				Nonce:    i,
 			}

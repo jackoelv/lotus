@@ -4,6 +4,8 @@ import (
 	"encoding"
 	"time"
 
+	"github.com/ipfs/go-cid"
+
 	sectorstorage "github.com/filecoin-project/sector-storage"
 )
 
@@ -23,11 +25,22 @@ type FullNode struct {
 
 // // Common
 
-// StorageMiner is a storage miner config
+// StorageMiner is a miner config
 type StorageMiner struct {
 	Common
 
-	Storage sectorstorage.SealerConfig
+	Dealmaking   DealmakingConfig
+	Storage      sectorstorage.SealerConfig
+	SealingDelay Duration
+}
+
+type DealmakingConfig struct {
+	ConsiderOnlineStorageDeals    bool
+	ConsiderOfflineStorageDeals   bool
+	ConsiderOnlineRetrievalDeals  bool
+	ConsiderOfflineRetrievalDeals bool
+	PieceCidBlocklist             []cid.Cid
+	ExpectedSealDuration          Duration
 }
 
 // API contains configs for API endpoint
@@ -39,9 +52,11 @@ type API struct {
 
 // Libp2p contains configs for libp2p
 type Libp2p struct {
-	ListenAddresses []string
-	BootstrapPeers  []string
-	ProtectedPeers  []string
+	ListenAddresses     []string
+	AnnounceAddresses   []string
+	NoAnnounceAddresses []string
+	BootstrapPeers      []string
+	ProtectedPeers      []string
 
 	ConnMgrLow   uint
 	ConnMgrHigh  uint
@@ -78,6 +93,8 @@ func defCommon() Common {
 				"/ip4/0.0.0.0/tcp/0",
 				"/ip6/::/tcp/0",
 			},
+			AnnounceAddresses:   []string{},
+			NoAnnounceAddresses: []string{},
 
 			ConnMgrLow:   150,
 			ConnMgrHigh:  180,
@@ -107,7 +124,20 @@ func DefaultStorageMiner() *StorageMiner {
 			AllowPreCommit1: true,
 			AllowPreCommit2: true,
 			AllowCommit:     true,
+			AllowUnseal:     true,
 		},
+
+		Dealmaking: DealmakingConfig{
+			ConsiderOnlineStorageDeals:    true,
+			ConsiderOfflineStorageDeals:   true,
+			ConsiderOnlineRetrievalDeals:  true,
+			ConsiderOfflineRetrievalDeals: true,
+			PieceCidBlocklist:             []cid.Cid{},
+			// TODO: It'd be nice to set this based on sector size
+			ExpectedSealDuration: Duration(time.Hour * 12),
+		},
+
+		SealingDelay: Duration(time.Hour),
 	}
 	cfg.Common.API.ListenAddress = "/ip4/127.0.0.1/tcp/2345/http"
 	cfg.Common.API.RemoteListenAddress = "127.0.0.1:2345"

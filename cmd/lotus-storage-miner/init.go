@@ -18,8 +18,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/mitchellh/go-homedir"
+	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
-	"gopkg.in/urfave/cli.v2"
 
 	"github.com/filecoin-project/go-address"
 	cborutil "github.com/filecoin-project/go-cbor-util"
@@ -37,7 +37,6 @@ import (
 	lapi "github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors"
-	"github.com/filecoin-project/lotus/chain/beacon/drand"
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/genesis"
@@ -51,7 +50,7 @@ import (
 
 var initCmd = &cli.Command{
 	Name:  "init",
-	Usage: "Initialize a lotus storage miner repo",
+	Usage: "Initialize a lotus miner repo",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:  "actor",
@@ -108,7 +107,7 @@ var initCmd = &cli.Command{
 		},
 	},
 	Action: func(cctx *cli.Context) error {
-		log.Info("Initializing lotus storage miner")
+		log.Info("Initializing lotus miner")
 
 		sectorSizeInt, err := units.RAMInBytes(cctx.String("sector-size"))
 		if err != nil {
@@ -130,7 +129,7 @@ var initCmd = &cli.Command{
 
 		log.Info("Checking proof parameters")
 
-		if err := paramfetch.GetParams(ctx, build.ParametersJson(), uint64(ssize)); err != nil {
+		if err := paramfetch.GetParams(ctx, build.ParametersJSON(), uint64(ssize)); err != nil {
 			return xerrors.Errorf("fetching proof parameters: %w", err)
 		}
 
@@ -152,7 +151,7 @@ var initCmd = &cli.Command{
 
 		log.Info("Checking if repo exists")
 
-		repoPath := cctx.String(FlagStorageRepo)
+		repoPath := cctx.String(FlagMinerRepo)
 		r, err := repo.NewFS(repoPath)
 		if err != nil {
 			return err
@@ -163,7 +162,7 @@ var initCmd = &cli.Command{
 			return err
 		}
 		if ok {
-			return xerrors.Errorf("repo at '%s' is already initialized", cctx.String(FlagStorageRepo))
+			return xerrors.Errorf("repo at '%s' is already initialized", cctx.String(FlagMinerRepo))
 		}
 
 		log.Info("Checking full node version")
@@ -237,7 +236,7 @@ var initCmd = &cli.Command{
 		}
 
 		if err := storageMinerInit(ctx, cctx, api, r, ssize, gasPrice); err != nil {
-			log.Errorf("Failed to initialize lotus-storage-miner: %+v", err)
+			log.Errorf("Failed to initialize lotus-miner: %+v", err)
 			path, err := homedir.Expand(repoPath)
 			if err != nil {
 				return err
@@ -250,7 +249,7 @@ var initCmd = &cli.Command{
 		}
 
 		// TODO: Point to setting storage price, maybe do it interactively or something
-		log.Info("Storage miner successfully created, you can now start it with 'lotus-storage-miner run'")
+		log.Info("Miner successfully created, you can now start it with 'lotus-miner run'")
 
 		return nil
 	},
@@ -360,10 +359,8 @@ func migratePreSealMeta(ctx context.Context, api lapi.FullNode, metadata string,
 		}*/
 	}
 
-	log.Infof("Setting next sector ID to %d", maxSectorID+1)
-
 	buf := make([]byte, binary.MaxVarintLen64)
-	size := binary.PutUvarint(buf, uint64(maxSectorID+1))
+	size := binary.PutUvarint(buf, uint64(maxSectorID))
 	return mds.Put(datastore.NewKey(modules.StorageCounterDSPrefix), buf[:size])
 }
 
@@ -391,7 +388,7 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api lapi.FullNode,
 	if err != nil {
 		return err
 	}
-	defer lr.Close()
+	defer lr.Close() //nolint:errcheck
 
 	log.Info("Initializing libp2p identity")
 
@@ -439,7 +436,7 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api lapi.FullNode,
 
 			smgr, err := sectorstorage.New(ctx, lr, stores.NewIndex(), &ffiwrapper.Config{
 				SealProofType: spt,
-			}, sectorstorage.SealerConfig{true, true, true}, nil, sa)
+			}, sectorstorage.SealerConfig{true, true, true, true}, nil, sa)
 			if err != nil {
 				return err
 			}
@@ -448,17 +445,7 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api lapi.FullNode,
 				return err
 			}
 
-			gen, err := api.ChainGetGenesis(ctx)
-			if err != nil {
-				return err
-			}
-
-			beacon, err := drand.NewDrandBeacon(gen.Blocks()[0].Timestamp, build.BlockDelay)
-			if err != nil {
-				return err
-			}
-
-			m := miner.NewMiner(api, epp, beacon, a)
+			m := miner.NewMiner(api, epp, a)
 			{
 				if err := m.Start(ctx); err != nil {
 					return xerrors.Errorf("failed to start up genesis miner: %w", err)
@@ -467,11 +454,11 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api lapi.FullNode,
 				cerr := configureStorageMiner(ctx, api, a, peerid, gasPrice)
 
 				if err := m.Stop(ctx); err != nil {
-					log.Error("failed to shut down storage miner: ", err)
+					log.Error("failed to shut down miner: ", err)
 				}
 
 				if cerr != nil {
-					return xerrors.Errorf("failed to configure storage miner: %w", err)
+					return xerrors.Errorf("failed to configure miner: %w", cerr)
 				}
 			}
 
@@ -505,7 +492,7 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api lapi.FullNode,
 		}
 
 		if err := configureStorageMiner(ctx, api, a, peerid, gasPrice); err != nil {
-			return xerrors.Errorf("failed to configure storage miner: %w", err)
+			return xerrors.Errorf("failed to configure miner: %w", err)
 		}
 
 		addr = a
@@ -518,7 +505,7 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api lapi.FullNode,
 		addr = a
 	}
 
-	log.Infof("Created new storage miner: %s", addr)
+	log.Infof("Created new miner: %s", addr)
 	if err := mds.Put(datastore.NewKey("miner-address"), addr.Bytes()); err != nil {
 		return err
 	}
@@ -558,7 +545,7 @@ func configureStorageMiner(ctx context.Context, api lapi.FullNode, addr address.
 		return xerrors.Errorf("getWorkerAddr returned bad address: %w", err)
 	}
 
-	enc, err := actors.SerializeParams(&miner2.ChangePeerIDParams{NewID: peerid})
+	enc, err := actors.SerializeParams(&miner2.ChangePeerIDParams{NewID: abi.PeerID(peerid)})
 	if err != nil {
 		return err
 	}
@@ -570,7 +557,7 @@ func configureStorageMiner(ctx context.Context, api lapi.FullNode, addr address.
 		Params:   enc,
 		Value:    types.NewInt(0),
 		GasPrice: gasPrice,
-		GasLimit: 99999999,
+		GasLimit: 0,
 	}
 
 	smsg, err := api.MpoolPushMessage(ctx, msg)
@@ -579,7 +566,7 @@ func configureStorageMiner(ctx context.Context, api lapi.FullNode, addr address.
 	}
 
 	log.Info("Waiting for message: ", smsg.Cid())
-	ret, err := api.StateWaitMsg(ctx, smsg.Cid())
+	ret, err := api.StateWaitMsg(ctx, smsg.Cid(), build.MessageConfidence)
 	if err != nil {
 		return err
 	}
@@ -635,7 +622,7 @@ func createStorageMiner(ctx context.Context, api lapi.FullNode, peerid peer.ID, 
 		Owner:         owner,
 		Worker:        worker,
 		SealProofType: spt,
-		Peer:          peerid,
+		Peer:          abi.PeerID(peerid),
 	})
 	if err != nil {
 		return address.Undef, err
@@ -649,7 +636,7 @@ func createStorageMiner(ctx context.Context, api lapi.FullNode, peerid peer.ID, 
 		Method: builtin.MethodsPower.CreateMiner,
 		Params: params,
 
-		GasLimit: 10000000,
+		GasLimit: 0,
 		GasPrice: gasPrice,
 	}
 
@@ -661,13 +648,13 @@ func createStorageMiner(ctx context.Context, api lapi.FullNode, peerid peer.ID, 
 	log.Infof("Pushed StorageMarket.CreateStorageMiner, %s to Mpool", signed.Cid())
 	log.Infof("Waiting for confirmation")
 
-	mw, err := api.StateWaitMsg(ctx, signed.Cid())
+	mw, err := api.StateWaitMsg(ctx, signed.Cid(), build.MessageConfidence)
 	if err != nil {
 		return address.Undef, err
 	}
 
 	if mw.Receipt.ExitCode != 0 {
-		return address.Undef, xerrors.Errorf("create storage miner failed: exit code %d", mw.Receipt.ExitCode)
+		return address.Undef, xerrors.Errorf("create miner failed: exit code %d", mw.Receipt.ExitCode)
 	}
 
 	var retval power.CreateMinerReturn
@@ -675,6 +662,6 @@ func createStorageMiner(ctx context.Context, api lapi.FullNode, peerid peer.ID, 
 		return address.Undef, err
 	}
 
-	log.Infof("New storage miners address is: %s (%s)", retval.IDAddress, retval.RobustAddress)
+	log.Infof("New miners address is: %s (%s)", retval.IDAddress, retval.RobustAddress)
 	return retval.IDAddress, nil
 }

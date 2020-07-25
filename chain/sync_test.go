@@ -34,8 +34,8 @@ import (
 func init() {
 	build.InsecurePoStValidation = true
 	os.Setenv("TRUST_PARAMS", "1")
-	miner.SupportedProofTypes = map[abi.RegisteredProof]struct{}{
-		abi.RegisteredProof_StackedDRG2KiBSeal: {},
+	miner.SupportedProofTypes = map[abi.RegisteredSealProof]struct{}{
+		abi.RegisteredSealProof_StackedDrg2KiBV1: {},
 	}
 	power.ConsensusMinerMinPower = big.NewInt(2048)
 	verifreg.MinVerifiedDealSize = big.NewInt(256)
@@ -170,7 +170,7 @@ func (tu *syncTestUtil) pushTsExpectErr(to int, fts *store.FullTipSet, experr bo
 	}
 }
 
-func (tu *syncTestUtil) mineOnBlock(blk *store.FullTipSet, src int, miners []int, wait, fail bool) *store.FullTipSet {
+func (tu *syncTestUtil) mineOnBlock(blk *store.FullTipSet, to int, miners []int, wait, fail bool) *store.FullTipSet {
 	if miners == nil {
 		for i := range tu.g.Miners {
 			miners = append(miners, i)
@@ -188,9 +188,9 @@ func (tu *syncTestUtil) mineOnBlock(blk *store.FullTipSet, src int, miners []int
 	require.NoError(tu.t, err)
 
 	if fail {
-		tu.pushTsExpectErr(src, mts.TipSet, true)
+		tu.pushTsExpectErr(to, mts.TipSet, true)
 	} else {
-		tu.pushFtsAndWait(src, mts.TipSet, wait)
+		tu.pushFtsAndWait(to, mts.TipSet, wait)
 	}
 
 	return mts.TipSet
@@ -408,7 +408,7 @@ func TestSyncBadTimestamp(t *testing.T) {
 
 	base := tu.g.CurTipset
 	tu.g.Timestamper = func(pts *types.TipSet, tl abi.ChainEpoch) uint64 {
-		return pts.MinTimestamp() + (build.BlockDelay / 2)
+		return pts.MinTimestamp() + (build.BlockDelaySecs / 2)
 	}
 
 	fmt.Println("BASE: ", base.Cids())
@@ -417,7 +417,7 @@ func TestSyncBadTimestamp(t *testing.T) {
 	a1 := tu.mineOnBlock(base, 0, nil, false, true)
 
 	tu.g.Timestamper = nil
-	tu.g.ResyncBankerNonce(a1.TipSet())
+	require.NoError(t, tu.g.ResyncBankerNonce(a1.TipSet()))
 
 	fmt.Println("After mine bad block!")
 	tu.printHeads()
@@ -431,6 +431,41 @@ func TestSyncBadTimestamp(t *testing.T) {
 	if !head.Equals(a2.TipSet()) {
 		t.Fatalf("expected head to be %s, but got %s", a2.Cids(), head.Cids())
 	}
+}
+
+type badWpp struct{}
+
+func (wpp badWpp) GenerateCandidates(context.Context, abi.PoStRandomness, uint64) ([]uint64, error) {
+	return []uint64{1}, nil
+}
+
+func (wpp badWpp) ComputeProof(context.Context, []abi.SectorInfo, abi.PoStRandomness) ([]abi.PoStProof, error) {
+	return []abi.PoStProof{
+		abi.PoStProof{
+			PoStProof:  abi.RegisteredPoStProof_StackedDrgWinning2KiBV1,
+			ProofBytes: []byte("evil"),
+		},
+	}, nil
+}
+
+func TestSyncBadWinningPoSt(t *testing.T) {
+	H := 15
+	tu := prepSyncTest(t, H)
+
+	client := tu.addClientNode()
+
+	require.NoError(t, tu.mn.LinkAll())
+	tu.connect(client, 0)
+	tu.waitUntilSync(0, client)
+
+	base := tu.g.CurTipset
+
+	// both miners now produce invalid winning posts
+	tu.g.SetWinningPoStProver(tu.g.Miners[0], &badWpp{})
+	tu.g.SetWinningPoStProver(tu.g.Miners[1], &badWpp{})
+
+	// now ensure that new blocks are not accepted
+	tu.mineOnBlock(base, client, nil, false, true)
 }
 
 func (tu *syncTestUtil) loadChainToNode(to int) {
@@ -479,7 +514,7 @@ func TestSyncFork(t *testing.T) {
 	a := tu.mineOnBlock(a1, p1, []int{0}, true, false)
 	a = tu.mineOnBlock(a, p1, []int{0}, true, false)
 
-	tu.g.ResyncBankerNonce(a1.TipSet())
+	require.NoError(t, tu.g.ResyncBankerNonce(a1.TipSet()))
 	// chain B will now be heaviest
 	b := tu.mineOnBlock(base, p2, []int{1}, true, false)
 	b = tu.mineOnBlock(b, p2, []int{1}, true, false)

@@ -14,15 +14,16 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/mitchellh/go-homedir"
+	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
-	"gopkg.in/urfave/cli.v2"
 
 	"github.com/filecoin-project/go-address"
+	"github.com/filecoin-project/sector-storage/fsutil"
+	"github.com/filecoin-project/sector-storage/stores"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
-	"github.com/filecoin-project/sector-storage/stores"
 )
 
 const metaFile = "sectorstore.json"
@@ -145,7 +146,7 @@ var storageListCmd = &cli.Command{
 		type fsInfo struct {
 			stores.ID
 			sectors []stores.Decl
-			stat    stores.FsStat
+			stat    fsutil.FsStat
 		}
 
 		sorted := make([]fsInfo, 0, len(st))
@@ -197,13 +198,13 @@ var storageListCmd = &cli.Command{
 				percCol = color.FgYellow
 			}
 
-			var barCols = uint64(50)
+			var barCols = int64(50)
 			set := (st.Capacity - st.Available) * barCols / st.Capacity
 			bar := strings.Repeat("|", int(set)) + strings.Repeat(" ", int(barCols-set))
 
 			fmt.Printf("\t[%s] %s/%s %s\n", color.New(percCol).Sprint(bar),
-				types.SizeStr(types.NewInt(st.Capacity-st.Available)),
-				types.SizeStr(types.NewInt(st.Capacity)),
+				types.SizeStr(types.NewInt(uint64(st.Capacity-st.Available))),
+				types.SizeStr(types.NewInt(uint64(st.Capacity))),
 				color.New(percCol).Sprintf("%d%%", usedPercent))
 			fmt.Printf("\t%s; %s; %s\n",
 				color.YellowString("Unsealed: %d", cnt[0]),
@@ -249,7 +250,7 @@ var storageListCmd = &cli.Command{
 
 type storedSector struct {
 	id    stores.ID
-	store stores.StorageInfo
+	store stores.SectorStorageInfo
 
 	unsealed, sealed, cache bool
 }
@@ -277,7 +278,7 @@ var storageFindCmd = &cli.Command{
 		}
 
 		if !cctx.Args().Present() {
-			return xerrors.New("Usage: lotus-storage-miner storage find [sector number]")
+			return xerrors.New("Usage: lotus-miner storage find [sector number]")
 		}
 
 		snum, err := strconv.ParseUint(cctx.Args().First(), 10, 64)

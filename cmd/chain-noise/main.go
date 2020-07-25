@@ -11,10 +11,11 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
 
-	"gopkg.in/urfave/cli.v2"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -53,8 +54,7 @@ var runCmd = &cli.Command{
 		defer closer()
 		ctx := lcli.ReqContext(cctx)
 
-		sendSmallFundsTxs(ctx, api, addr, 5)
-		return nil
+		return sendSmallFundsTxs(ctx, api, addr, 5)
 	},
 }
 
@@ -69,7 +69,7 @@ func sendSmallFundsTxs(ctx context.Context, api api.FullNode, from address.Addre
 		sendSet = append(sendSet, naddr)
 	}
 
-	tick := time.NewTicker(time.Second / time.Duration(rate))
+	tick := build.Clock.Ticker(time.Second / time.Duration(rate))
 	for {
 		select {
 		case <-tick.C:
@@ -77,7 +77,7 @@ func sendSmallFundsTxs(ctx context.Context, api api.FullNode, from address.Addre
 				From:     from,
 				To:       sendSet[rand.Intn(20)],
 				Value:    types.NewInt(1),
-				GasLimit: 100000,
+				GasLimit: 0,
 				GasPrice: types.NewInt(0),
 			}
 
