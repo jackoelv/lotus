@@ -26,7 +26,36 @@ func (r *remoteWorker) NewSector(ctx context.Context, sector abi.SectorID) error
 }
 
 func (r *remoteWorker) AddPiece(ctx context.Context, sector abi.SectorID, pieceSizes []abi.UnpaddedPieceSize, newPieceSize abi.UnpaddedPieceSize, pieceData storage2.Data) (abi.PieceInfo, error) {
-	return abi.PieceInfo{}, xerrors.New("unsupported")
+	log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go AddPiece")
+	nodeApi := r.WorkerAPI
+	abipiece, err := nodeApi.RemoteAddPiece(ctx, sector, pieceSizes, newPieceSize)
+	if err != nil {
+		return abipiece, err
+	}
+
+	return abipiece, nil
+}
+func (r *remoteWorker) DealAddPiece(ctx context.Context, sector abi.SectorID, pieceSizes []abi.UnpaddedPieceSize, newPieceSize abi.UnpaddedPieceSize, pieceData storage2.Data) (abi.PieceInfo, error) {
+	log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go AddPiece")
+	nodeApi := r.WorkerAPI
+	abipiece, err := nodeApi.RemoteAddPiece(ctx, sector, pieceSizes, newPieceSize)
+	if err != nil {
+		return abipiece, err
+	}
+
+	return abipiece, xerrors.New("unsupported")
+}
+
+func (r *remoteWorker) RemoteAddPiece(ctx context.Context, sector abi.SectorID, pieceSizes []abi.UnpaddedPieceSize, newPieceSize abi.UnpaddedPieceSize) (abi.PieceInfo, error) {
+	log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go RemoteAddPiece")
+	nodeApi := r.WorkerAPI
+	abipiece, err := nodeApi.RemoteAddPiece(ctx, sector, pieceSizes, newPieceSize)
+	if err != nil {
+		return abipiece, err
+	}
+
+	return abipiece, nil
+
 }
 
 func connectRemoteWorker(ctx context.Context, fa api.Common, url string) (*remoteWorker, error) {

@@ -264,8 +264,11 @@ type StorageMinerStruct struct {
 type WorkerStruct struct {
 	Internal struct {
 		// TODO: lower perms
+		AddPiece     func(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, pieceData storage.Data) (abi.PieceInfo, error) `perm:"admin"`
+		DealAddPiece func(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, pieceData storage.Data) (abi.PieceInfo, error) `perm:"admin"`
 
-		Version func(context.Context) (build.Version, error) `perm:"admin"`
+		RemoteAddPiece func(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize) (abi.PieceInfo, error) `perm:"admin"`
+		Version        func(context.Context) (build.Version, error)                                                                                  `perm:"admin"`
 
 		TaskTypes func(context.Context) (map[sealtasks.TaskType]struct{}, error) `perm:"admin"`
 		Paths     func(context.Context) ([]stores.StoragePath, error)            `perm:"admin"`
@@ -1023,7 +1026,15 @@ func (c *StorageMinerStruct) StorageAddLocal(ctx context.Context, path string) e
 }
 
 // WorkerStruct
-
+func (w *WorkerStruct) AddPiece(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, pieceData storage.Data) (abi.PieceInfo, error) {
+	return w.Internal.AddPiece(ctx, sector, epcs, sz, pieceData)
+}
+func (w *WorkerStruct) DealAddPiece(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, pieceData storage.Data) (abi.PieceInfo, error) {
+	return w.Internal.DealAddPiece(ctx, sector, epcs, sz, pieceData)
+}
+func (w *WorkerStruct) RemoteAddPiece(ctx context.Context, sector abi.SectorID, epcs []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize) (abi.PieceInfo, error) {
+	return w.Internal.RemoteAddPiece(ctx, sector, epcs, sz)
+}
 func (w *WorkerStruct) Version(ctx context.Context) (build.Version, error) {
 	return w.Internal.Version(ctx)
 }
