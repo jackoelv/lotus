@@ -315,6 +315,8 @@ var runCmd = &cli.Command{
 		rpcServer := jsonrpc.NewServer()
 		rpcServer.Register("Filecoin", apistruct.PermissionedWorkerAPI(workerApi))
 
+		//log.Info("jackoelv workerApi: %s ", apistruct.PermissionedWorkerAPI(workerApi))
+
 		mux.Handle("/rpc/v0", rpcServer)
 		mux.PathPrefix("/remote").HandlerFunc((&stores.FetchHandler{Local: localStore}).ServeHTTP)
 		mux.PathPrefix("/").Handler(http.DefaultServeMux) // pprof
