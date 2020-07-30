@@ -145,7 +145,7 @@ var runCmd = &cli.Command{
 
 		rpcServer := jsonrpc.NewServer()
 		rpcServer.Register("Filecoin", apistruct.PermissionedStorMinerAPI(minerapi))
-		//log.Infof("jackoelv minerapi is %s", minerapi)
+
 		mux.Handle("/rpc/v0", rpcServer)
 		mux.PathPrefix("/remote").HandlerFunc(minerapi.(*impl.StorageMinerAPI).ServeRemote)
 		mux.PathPrefix("/").Handler(http.DefaultServeMux) // pprof

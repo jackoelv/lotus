@@ -1,0 +1,74 @@
+{
+  "Accounts": [
+    {
+      "Type": "account",
+      "Balance": "50000000000000000000000000",
+      "Meta": {
+        "Owner": "t3wdc5m57dn3jjtpgb7qtqvtutt2ekzv6cqeboqdovo5qddhiya5g5esmp7qaia6iibqsv3yxnd4pt3njt45jq"
+      }
+    }
+  ],
+  "Miners": [
+    {
+      "Owner": "t3wdc5m57dn3jjtpgb7qtqvtutt2ekzv6cqeboqdovo5qddhiya5g5esmp7qaia6iibqsv3yxnd4pt3njt45jq",
+      "Worker": "t3wdc5m57dn3jjtpgb7qtqvtutt2ekzv6cqeboqdovo5qddhiya5g5esmp7qaia6iibqsv3yxnd4pt3njt45jq",
+      "PeerId": "12D3KooWG8JsqF1HXgAfUYoue86te1RWWHRTsBepLjHbMAMy1Yxy",
+      "MarketBalance": "0",
+      "PowerBalance": "0",
+      "SectorSize": 2048,
+      "Sectors": [
+        {
+          "CommR": {
+            "/": "bagboea4b5abcb7ya4wq3udolkgoz73spwdiysttidbvzgsfl3iq3r5hcc2lqv3qg"
+          },
+          "CommD": {
+            "/": "baga6ea4seaqk5lyqsarq4sifg7zzjtolpd6lgdsosyaotvzzyks6xc5hm3j5eea"
+          },
+          "SectorID": 0,
+          "Deal": {
+            "PieceCID": {
+              "/": "baga6ea4seaqk5lyqsarq4sifg7zzjtolpd6lgdsosyaotvzzyks6xc5hm3j5eea"
+            },
+            "PieceSize": 2048,
+            "VerifiedDeal": false,
+            "Client": "t3wdc5m57dn3jjtpgb7qtqvtutt2ekzv6cqeboqdovo5qddhiya5g5esmp7qaia6iibqsv3yxnd4pt3njt45jq",
+            "Provider": "t01000",
+            "Label": "0",
+            "StartEpoch": 0,
+            "EndEpoch": 9001,
+            "StoragePricePerEpoch": "0",
+            "ProviderCollateral": "0",
+            "ClientCollateral": "0"
+          },
+          "ProofType": 0
+        },
+        {
+          "CommR": {
+            "/": "bagboea4b5abcaxs5f27dkeq5bh65e3p5nmvjch5p7wfvtgc7o2rqwvi3e6fcl6yt"
+          },
+          "CommD": {
+            "/": "baga6ea4seaqpmtff6lwmobqqypbno423yqcux6ppyjnllivcgalrq52enp4sioi"
+          },
+          "SectorID": 1,
+          "Deal": {
+            "PieceCID": {
+              "/": "baga6ea4seaqpmtff6lwmobqqypbno423yqcux6ppyjnllivcgalrq52enp4sioi"
+            },
+            "PieceSize": 2048,
+            "VerifiedDeal": false,
+            "Client": "t3wdc5m57dn3jjtpgb7qtqvtutt2ekzv6cqeboqdovo5qddhiya5g5esmp7qaia6iibqsv3yxnd4pt3njt45jq",
+            "Provider": "t01000",
+            "Label": "1",
+            "StartEpoch": 0,
+            "EndEpoch": 9001,
+            "StoragePricePerEpoch": "0",
+            "ProviderCollateral": "0",
+            "ClientCollateral": "0"
+          },
+          "ProofType": 0
+        }
+      ]
+    }
+  ],
+  "NetworkName": "localnet-552f16a6-1b50-433a-a0e4-6cd862b8c884"
+}

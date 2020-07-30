@@ -95,7 +95,7 @@ var runCmd = &cli.Command{
 		&cli.StringFlag{
 			Name:  "address",
 			Usage: "locally reachable address",
-			Value: "0.0.0.0",
+			Value: "0.0.0.0:3456",
 		},
 		&cli.BoolFlag{
 			Name:  "no-local-storage",
@@ -115,6 +115,11 @@ var runCmd = &cli.Command{
 			Name:  "commit",
 			Usage: "enable commit (32G sectors: all cores or GPUs, 128GiB Memory + 64GiB swap)",
 			Value: true,
+		},
+		&cli.IntFlag{
+			Name:  "parallel-fetch-limit",
+			Usage: "maximum fetch operations to run in parallel",
+			Value: 5,
 		},
 		&cli.StringFlag{
 			Name:  "timeout",
@@ -179,8 +184,6 @@ var runCmd = &cli.Command{
 		var taskTypes []sealtasks.TaskType
 
 		taskTypes = append(taskTypes, sealtasks.TTFetch, sealtasks.TTCommit1, sealtasks.TTFinalize)
-
-		taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 
 		if cctx.Bool("precommit1") {
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit1)
@@ -297,7 +300,7 @@ var runCmd = &cli.Command{
 			return xerrors.Errorf("could not get api info: %w", err)
 		}
 
-		remote := stores.NewRemote(localStore, nodeApi, sminfo.AuthHeader())
+		remote := stores.NewRemote(localStore, nodeApi, sminfo.AuthHeader(), cctx.Int("parallel-fetch-limit"))
 
 		// Create / expose the worker
 
@@ -314,8 +317,6 @@ var runCmd = &cli.Command{
 
 		rpcServer := jsonrpc.NewServer()
 		rpcServer.Register("Filecoin", apistruct.PermissionedWorkerAPI(workerApi))
-
-		//log.Info("jackoelv workerApi: %s ", apistruct.PermissionedWorkerAPI(workerApi))
 
 		mux.Handle("/rpc/v0", rpcServer)
 		mux.PathPrefix("/remote").HandlerFunc((&stores.FetchHandler{Local: localStore}).ServeHTTP)

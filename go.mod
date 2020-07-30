@@ -3,44 +3,40 @@ module github.com/filecoin-project/lotus
 go 1.14
 
 require (
-	4d63.com/gochecknoglobals v0.0.0-20190306162314-7c3491d2b6ec // indirect
-	4d63.com/gochecknoinits v0.0.0-20200108094044-eb73b47b9fc4 // indirect
 	contrib.go.opencensus.io/exporter/jaeger v0.1.0
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
 	github.com/BurntSushi/toml v0.3.1
 	github.com/GeertJohan/go.rice v1.0.0
 	github.com/Gurpartap/async v0.0.0-20180927173644-4f7f499dd9ee
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
-	github.com/alecthomas/gocyclo v0.0.0-20150208221726-aa8f8b160214 // indirect
-	github.com/alexkohler/nakedret v1.0.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.0.0
 	github.com/dgraph-io/badger/v2 v2.0.3
 	github.com/docker/go-units v0.4.0
 	github.com/drand/drand v1.0.3-0.20200714175734-29705eaf09d4
 	github.com/drand/kyber v1.1.1
 	github.com/fatih/color v1.8.0
-	github.com/filecoin-project/chain-validation v0.0.6-0.20200723211224-ffdcb7a20fe8
+	github.com/filecoin-project/chain-validation v0.0.6-0.20200728204507-037308fa7af2
 	github.com/filecoin-project/filecoin-ffi v0.30.4-0.20200716204036-cddc56607e1d
 	github.com/filecoin-project/go-address v0.0.2-0.20200504173055-8b6f2fb2b3ef
-	github.com/filecoin-project/go-bitfield v0.1.0
+	github.com/filecoin-project/go-bitfield v0.1.1
 	github.com/filecoin-project/go-cbor-util v0.0.0-20191219014500-08c40a1e63a2
 	github.com/filecoin-project/go-crypto v0.0.0-20191218222705-effae4ea9f03
-	github.com/filecoin-project/go-data-transfer v0.5.0
+	github.com/filecoin-project/go-data-transfer v0.5.1
 	github.com/filecoin-project/go-fil-commcid v0.0.0-20200716160307-8f644712406f
-	github.com/filecoin-project/go-fil-markets v0.5.1
+	github.com/filecoin-project/go-fil-markets v0.5.2
 	github.com/filecoin-project/go-jsonrpc v0.1.1-0.20200602181149-522144ab4e24
+	github.com/filecoin-project/go-multistore v0.0.2
 	github.com/filecoin-project/go-paramfetch v0.0.2-0.20200701152213-3e0f0afdc261
 	github.com/filecoin-project/go-statestore v0.1.0
 	github.com/filecoin-project/go-storedcounter v0.0.0-20200421200003-1c99c62e8a5b
-	github.com/filecoin-project/sector-storage v0.0.0-20200723200950-ed2e57dde6df
-	github.com/filecoin-project/specs-actors v0.8.1-0.20200724015154-3c690d9b7e1d
+	github.com/filecoin-project/sector-storage v0.0.0-20200727112136-9377cb376d25
+	github.com/filecoin-project/specs-actors v0.8.1-0.20200728182452-1476088f645b
 	github.com/filecoin-project/specs-storage v0.1.1-0.20200622113353-88a9704877ea
-	github.com/filecoin-project/storage-fsm v0.0.0-20200720190000-2cfe2fe3c334
+	github.com/filecoin-project/storage-fsm v0.0.0-20200728185042-33f96f051f20
 	github.com/gbrlsnchs/jwt/v3 v3.0.0-beta.1
 	github.com/go-kit/kit v0.10.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/google/uuid v1.1.1
-	github.com/gordonklaus/ineffassign v0.0.0-20200309095847-7953dde2c7bf // indirect
 	github.com/gorilla/mux v1.7.4
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/go-multierror v1.1.0
@@ -49,7 +45,7 @@ require (
 	github.com/ipfs/go-bitswap v0.2.8
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-blockservice v0.1.4-0.20200624145336-a978cec6e834
-	github.com/ipfs/go-cid v0.0.6
+	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-cidutil v0.0.2
 	github.com/ipfs/go-datastore v0.4.4
 	github.com/ipfs/go-ds-badger2 v0.1.1-0.20200708190120-187fc06f714e
@@ -57,7 +53,7 @@ require (
 	github.com/ipfs/go-ds-measure v0.1.0
 	github.com/ipfs/go-filestore v1.0.0
 	github.com/ipfs/go-fs-lock v0.0.1
-	github.com/ipfs/go-graphsync v0.0.6-0.20200715204712-ef06b3d32e83
+	github.com/ipfs/go-graphsync v0.0.6-0.20200721211002-c376cbe14c0a
 	github.com/ipfs/go-ipfs-blockstore v1.0.0
 	github.com/ipfs/go-ipfs-chunker v0.0.5
 	github.com/ipfs/go-ipfs-ds-help v1.0.0
@@ -76,7 +72,6 @@ require (
 	github.com/ipfs/interface-go-ipfs-core v0.2.3
 	github.com/ipld/go-car v0.1.1-0.20200526133713-1c7508d55aae
 	github.com/ipld/go-ipld-prime v0.0.2-0.20200428162820-8b59dc292b8e
-	github.com/jgautheron/goconst v0.0.0-20200227150835-cda7ea3bf591 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.7.0
 	github.com/libp2p/go-eventbus v0.2.1
@@ -98,9 +93,6 @@ require (
 	github.com/libp2p/go-libp2p-yamux v0.2.8
 	github.com/libp2p/go-maddr-filter v0.1.0
 	github.com/mattn/go-isatty v0.0.12 // indirect
-	github.com/mdempsky/maligned v0.0.0-20180708014732-6e39bd26a8c8 // indirect
-	github.com/mdempsky/unconvert v0.0.0-20200228143138-95ecdbfc0b5f // indirect
-	github.com/mibk/dupl v1.0.0 // indirect
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/multiformats/go-base32 v0.0.3
@@ -109,17 +101,12 @@ require (
 	github.com/multiformats/go-multiaddr-net v0.1.5
 	github.com/multiformats/go-multibase v0.0.3
 	github.com/multiformats/go-multihash v0.0.14
-	github.com/opennota/check v0.0.0-20180911053232-0c771f5545ff // indirect
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/raulk/clock v1.1.0
-	github.com/securego/gosec v0.0.0-20200401082031-e946c8c39989 // indirect
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.6.1
-	github.com/stripe/safesql v0.2.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0
-	github.com/tsenart/deadcode v0.0.0-20160724212837-210d2dc333e9 // indirect
 	github.com/urfave/cli/v2 v2.2.0
-	github.com/walle/lll v1.0.1 // indirect
 	github.com/whyrusleeping/bencher v0.0.0-20190829221104-bb6607aa8bba
 	github.com/whyrusleeping/cbor-gen v0.0.0-20200723182808-cb5de1c427f5
 	github.com/whyrusleeping/multiaddr-filter v0.0.0-20160516205228-e903e4adabd7
@@ -137,9 +124,6 @@ require (
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 	google.golang.org/api v0.25.0 // indirect
 	launchpad.net/gocheck v0.0.0-20140225173054-000000000087 // indirect
-	mvdan.cc/interfacer v0.0.0-20180901003855-c20040233aed // indirect
-	mvdan.cc/lint v0.0.0-20170908181259-adc824a0674b // indirect
-	mvdan.cc/unparam v0.0.0-20200501210554-b37ab49443f7 // indirect
 )
 
 replace github.com/golangci/golangci-lint => github.com/golangci/golangci-lint v1.18.0

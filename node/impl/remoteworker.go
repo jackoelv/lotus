@@ -63,7 +63,6 @@ func connectRemoteWorker(ctx context.Context, fa api.Common, url string) (*remot
 	if err != nil {
 		return nil, xerrors.Errorf("creating jsonrpc client: %w", err)
 	}
-	log.Warnf("jackoelvAddpiecetest:lotus/node/imple/remoteworker.go wapi:%s", wapi)
 
 	return &remoteWorker{wapi, closer}, nil
 }
